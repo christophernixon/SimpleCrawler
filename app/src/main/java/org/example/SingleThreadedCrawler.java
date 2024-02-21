@@ -8,18 +8,18 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import javax.net.ssl.HttpsURLConnection;
-import javax.swing.text.html.Option;
-
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class SingleThreadedCrawler implements Crawler {
 
-    public static final int MAX_URLS = 200;
+    public static final int MAX_URLS = 20;
+    private static Logger log = LoggerFactory.getLogger(App.class);
 
     @Override
     public void crawl(final String url) {
@@ -51,7 +51,7 @@ public class SingleThreadedCrawler implements Crawler {
     }
 
     private void visitPage(final String url, final Set<String> links, final List<String> visitedURLs) {
-        System.out.println("Visited URL: " + url + "\nFound links: " + links + '\n');
+        log.info("Visited URL: {} \nLinks on page: {}\n", url, links);
         visitedURLs.add(url);
     }
 
@@ -82,7 +82,7 @@ public class SingleThreadedCrawler implements Crawler {
             }
             return Optional.empty();
         } catch (final Exception e) {
-            e.printStackTrace();
+            log.warn("Error loading URL <{}>: {}", url, e.getMessage());
             return Optional.empty();
         }
     }
