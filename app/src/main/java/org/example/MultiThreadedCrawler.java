@@ -28,7 +28,7 @@ public class MultiThreadedCrawler implements Crawler {
         final ConcurrentLinkedDeque<String> urlsToVisit = new ConcurrentLinkedDeque<>();
 
         while (!urlsToVisit.isEmpty() && numURLsVisited < MAX_URLS) {
-            executor.submit(new MultiThreadedCrawlerWorker(visitedURLs, urlsToVisit, this));
+            executor.submit(new MultiThreadedCrawlerWorker(visitedURLs, urlsToVisit, this, robotsParser));
         }
     }
 
