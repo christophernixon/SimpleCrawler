@@ -18,6 +18,8 @@ repositories {
 dependencies {
     // Use TestNG framework, also requires calling test.useTestNG() below
     testImplementation libs.testng
+    // https://mvnrepository.com/artifact/org.mockito/mockito-core
+    testImplementation group: 'org.mockito', name: 'mockito-core', version: '2.1.0'
 
     // This dependency is used by the application.
     implementation libs.guava
@@ -42,8 +44,15 @@ java {
 
 application {
     // Define the main class for the application.
+    applicationDefaultJvmArgs = ["--add-opens", "java.base/jdk.internal.loader=ALL-UNNAMED"]
     mainClass = 'org.example.App'
 }
+
+task copyTestResources(type: Copy) {
+    from "${projectDir}/src/test/resources"
+    into "${buildDir}/classes/test"
+}
+processTestResources.dependsOn copyTestResources
 
 tasks.named('test') {
     // Use TestNG for unit tests.

@@ -3,26 +3,33 @@ package org.example;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import org.jsoup.Connection;
-import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.util.concurrent.RateLimiter;
 
 
 public class SingleThreadedCrawler implements Crawler {
 
-    public static final int MAX_URLS = 20;
-    private static Logger log = LoggerFactory.getLogger(App.class);
+    private static final int MAX_URLS = 1000;
+    private static Logger log = LoggerFactory.getLogger(SingleThreadedCrawler.class);
+    private RateLimiter throttler = RateLimiter.create(1.0);
+    private HtmlHelper htmlHelper;
+
+    public SingleThreadedCrawler(final HtmlHelper htmlHelper) {
+        this.htmlHelper = htmlHelper;
+    }
 
     @Override
     public void crawl(final String url) {
+        // Check for and process robots.txt file
+        RobotsParser robotsParser = new RobotsParser(url);
+
         final List<String> visitedURLs = new ArrayList<>();
         final Deque<String> urlsToVisit = new ArrayDeque<>();
         int numURLsVisited = 0;
@@ -33,21 +40,18 @@ public class SingleThreadedCrawler implements Crawler {
         urlsToVisit.push(url);
         while (urlsToVisit.size() > 0 && numURLsVisited < MAX_URLS) {
             currentURL = urlsToVisit.pop();
+            currentDocument = htmlHelper.fetchPage(currentURL, throttler);
+            currentLinks = htmlHelper.getAllLinks(currentDocument);
+            visitPage(currentURL, currentLinks, visitedURLs);
 
-            if (!visitedURLs.contains(currentURL)) {
-                currentDocument = fetchPage(currentURL);
-                currentLinks = getAllLinks(currentDocument);
-                visitPage(currentURL, currentLinks, visitedURLs);
-
-                for (final String link : currentLinks) {
-                    // Only add new link if it hasn't been visited and isn't already on stack and is a sub-page
-                    if (!visitedURLs.contains(link) && !urlsToVisit.contains(link) && link.startsWith(url)) {
-                        urlsToVisit.push(link);
-                    }
+            for (final String link : currentLinks) {
+                if (canVisitPage(visitedURLs, urlsToVisit, url, link, robotsParser)) {
+                    urlsToVisit.push(link);
                 }
             }
             numURLsVisited++;
         }
+        log.info("Stats: numURLsVisited: <{}>", numURLsVisited);
     }
 
     private void visitPage(final String url, final Set<String> links, final List<String> visitedURLs) {
@@ -55,39 +59,24 @@ public class SingleThreadedCrawler implements Crawler {
         visitedURLs.add(url);
     }
 
-    private Set<String> getAllLinks(final Optional<Document> document) {
-        Set<String> links = new HashSet<String>();
-        if (document.isEmpty()) {
-            return links;
+    /*
+     * Only visit page if the following conditions are met:
+     * 1. It's allowed by robots.txt file
+     * 2. It hasn't already been visited
+     * 3. It's not already in the list of URLs to visit
+     * 4. It's within the same domain
+     */
+    private boolean canVisitPage(final List<String> visitedURLs,
+                                 final Deque<String> urlsToVisit,
+                                 final String startingURL,
+                                 final String currentURL,
+                                 final RobotsParser robotsParser) {
+        if (robotsParser.canAccess(currentURL) &&
+            !visitedURLs.contains(currentURL)
+            && !urlsToVisit.contains(currentURL)
+            && currentURL.startsWith(startingURL)) {
+            return true;
         }
-        String rawURL;
-        String cleanedURL;
-        for (Element link : document.get().select("a[href]")) {
-            rawURL = link.absUrl("href");
-            cleanedURL = rawURL.split("#")[0];
-            if (cleanedURL.endsWith("/")) {
-                cleanedURL = cleanedURL.substring(0, cleanedURL.length() - 1);
-            }
-            links.add(cleanedURL);
-        }
-        return links;
-    }
-
-    private Optional<Document> fetchPage(final String url) {
-        try {
-            final Connection connection = Jsoup.connect(url);
-            final Document document = connection.get();
-            if (isSuccessful(connection.response().statusCode())) {
-                return Optional.of(document);
-            }
-            return Optional.empty();
-        } catch (final Exception e) {
-            log.warn("Error loading URL <{}>: {}", url, e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    private boolean isSuccessful(final int statusCode) {
-        return (statusCode / 100 == 2);
+        return false;
     }
 }
